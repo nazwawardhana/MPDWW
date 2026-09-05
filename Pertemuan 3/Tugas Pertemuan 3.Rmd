@@ -1,0 +1,278 @@
+---
+title: "Tugas pertemuan 3 Praktikum Metode Peramalan Deret Waktu"
+author: "Nazwa Nadya Wardhana (M0401241073)"
+date: "2026-09-05"
+output: 
+ rmdformats::readthedown
+---
+
+# Tugas
+1.  Gunakan dataset kualitas udara pada Google Drive: [[Link GDrive]](https://drive.google.com/drive/folders/18ZcJpGKzmwlw9zxGZjTtVnJV0Ufau23g?usp=drive_link)
+
+2.  Tetapkan AQI sebagai variabel dependen (Y), lalu pilih satu variabel polutan (CO, NO₂, O₃, PM10, PM2.5, atau SO₂) sebagai variabel independen (X).
+
+3.  Terapkan ketiga metode regresi dengan peubah lag yang sudah dipelajari (Koyck, DLM, dan ARDL). Tentukan lag optimum untuk masing-masing metode!
+
+4.  Lakukan evaluasi asumsi model dan bandingkan kinerja peramalan menggunakan metrik akurasi (MAPE) serta visualisasi grafik.
+
+5.  *Upload* *dataset* dan tugas per individu ke GitHub pada folder `Pertemuan-3` dengan format HTML bernama: `Tugas-Pertemuan-3.html` dan `.Rmd`.
+
+6.  **Deadline Pengumpulan:** Kamis, 10 September 2026, 23.59 WIB.
+>>>>>>> a5a36ba7323504b827e5b009e05fd20192a1de1f
+
+# 1. Persiapan Data
+
+## *Packages*
+
+```{r}
+library(dLagM)
+library(dynlm)
+library(MLmetrics)
+library(lmtest)
+library(car)
+library(forecast)
+library(ggplot2)
+```
+
+
+## Impor & Pembagian Data
+
+Kita akan menggunakan data simulasi untuk melatih pemodelan. Data dibagi menjadi data Training (untuk membentuk model) dan data Testing (untuk menguji akurasi ramalan).
+
+```{r}
+# Impor Data
+data <- read.csv("C:\\Users\\Mybook Hype7\\Documents\\MPDWW\\MPDWW\\Pertemuan 3\\NewDelhi_Air_quality.csv")
+head(data)
+str(data)
+```
+```{r}
+#pemilihan variabel
+
+datame <- data[, c("datetime", "AQI", "o3")]
+
+head(data)
+summary(data)
+```
+
+
+```{r}
+# Membagi data (80% training, 20% untuk testing)
+train <- datame[1:57,]
+test <- datame[58:72,]
+
+# Mengubah format data menjadi objek Time Series (ts)
+train.ts <- ts(train)
+test.ts <- ts(test)
+data.ts <- ts(data)
+```
+
+# 2. Terapkan ketiga metode regresi
+
+## A. Model Koyck
+
+Model Koyck mengatasi masalah infinite distributed lag (pengaruh masa lalu yang tak terhingga) dengan mengasumsikan bahwa semakin jauh jarak lag, semakin kecil pengaruhnya.
+
+Melalui transformasi aljabar, efek masa lalu dari X yang sangat panjang diringkas ke dalam satu variabel saja, yaitu $Y_{t-1}$. Bentuk persamaannya menjadi:
+
+$$Y_t=a(1-\lambda)+\beta_0X_t+\lambda Y_{t-1}+V_t$$ Catatan: $V_t$ adalah error term gabungan. Pada hasil ringkasan model (estimasi), $V_t$ tidak ditampilkan karena nilai harapannya diasumsikan nol.
+
+### Pemodelan
+
+Pemodelan ini menggunakan fungsi `koyckDlm()`.
+
+```{r}
+# Membangun Model Koyck
+model.koyck <- koyckDlm(x = train$o3, y = train$AQI)
+summary(model.koyck)
+```
+**Interpretasi:** *P-value* dari peubah $X_t(O_3)$ dan $Y_{t-1}$ $< 0.05$, artinya kedua peubah tersebut berpengaruh signifikan terhadap $Y_t (AQI)$. Koefisien pada $Y_{t-1}$ mewakili parameter $\lambda$ (tingkat penurunan pengaruh).
+
+**Persamaan:**
+
+$$\hat{Y_t}=0.54798+0.25830X_t+0.41955Y_{t-1}$$
+
+### Peramalan
+
+```{r}
+# Meramalkan 15 periode ke depan
+fore.koyck <- forecast(model.koyck, x = test$o3, h = 15)
+fore.koyck
+
+mape.koyck <- MAPE(as.numeric(fore.koyck$mean), as.numeric(test$AQI))
+
+cat("MAPE Model Koyck:", mape.koyck, "\n")
+```
+
+
+Berdasarkan hasil perhitungan, diperoleh nilai MAPE Model Koyck sebesar 120,7043%. Nilai tersebut menunjukkan bahwa rata-rata kesalahan absolut hasil peramalan Model Koyck adalah sekitar 120,70% terhadap nilai AQI aktual pada data testing. Dengan demikian, Model Koyck menghasilkan tingkat kesalahan peramalan yang relatif besar
+
+
+
+## B. Regression with Distributed Lag (DLM)
+
+Berbeda dengan Koyck, pemodelan DLM membatasi secara spesifik berapa periode memori masa lalu yang dilibatkan. Batasan ini direpresentasikan dengan parameter $q$.
+
+\$\$Y_t=\\alpha+\\beta_0X_t+\\beta_1X\_{t-1}+...+\\beta_qX\_{t-q}+e_t\$\$
+
+### Pemodelan (Lag = 2)
+
+Fungsi yang digunakan adalah `dlm()`. Parameter `q = 2` berarti kita memasukkan $X_t, X_{t-1}$, dan $X_{t-2}$.
+
+```{r}
+model.dlm <- dlm(x = train$o3, y = train$AQI, q = 2)
+summary(model.dlm)
+```
+
+### Penentuan *Lag* Optimum
+
+Untuk menghindari coba-coba, kita bisa mencari nilai $q$ terbaik berdasarkan nilai *Akaike Information Criterion (AIC)* terkecil menggunakan fungsi `finiteDLMauto()`.
+
+```{r}
+finiteDLMauto(formula = AQI ~ o3,
+              data = data.frame(train), q.min = 1, q.max = 10,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+
+**Interpretasi:** Pilih baris dengan nilai AIC yang paling kecil. Misalnya, lag optimum berada pada $q=10$, kita bangun ulang modelnya:
+
+```{r}
+# Membangun ulang DLM dengan Lag Optimum (q=10)
+model.dlm.opt <- dlm(x = train$o3, y = train$AQI, q = 10)
+summary(model.dlm.opt)
+
+
+
+# Peramalan model DLM Optimum
+fore.dlm.opt <- dLagM::forecast(model = model.dlm.opt,x = test$o3, h = 15)
+
+mape.dlm.opt <- MAPE(fore.dlm.opt$forecasts, test$AQI)
+cat("MAPE Model DLM Optimum:", mape.dlm.opt, "\n")
+```
+Berdasarkan hasil optimasi lag menggunakan kriteria AIC, diperoleh model DLM dengan lag optimum q=10. Model tersebut memiliki nilai R^2 sebesar 0,9871, yang menunjukkan bahwa model mampu menjelaskan sekitar 98,71% variasi AQI pada data training. Variabel O3 pada periode saat ini serta lag ke-7 hingga lag ke-10 berpengaruh signifikan terhadap AQI pada taraf 5%. Berdasarkan hasil peramalan pada data testing, model DLM optimum menghasilkan nilai MAPE sebesar 1,27%, yang berarti rata-rata kesalahan absolut peramalan AQI adalah sekitar 1,27% terhadap nilai aktual.
+
+
+## C. Autoregressive Distributed Lag (ARDL)
+
+Model ARDL menggabungkan pengaruh dari peubah independen masa lalu dan peubah dependen masa lalu.
+
+**Perhatian Notasi:**
+
+Pada *package* `dLagM` (khusus fungsi `ardlDlm`), aturannya adalah:
+
+- $p$ = panjang *lag* peubah independen ($X$).
+
+- $q$ = panjang *lag* peubah dependen ($Y$).
+
+### Pemodelan
+
+```{r}
+# Model ARDL dengan lag X = 1 dan lag Y = 1
+model.ardl <- ardlDlm(formula = AQI ~ o3, data = train, p = 1, q = 1)
+summary(model.ardl)
+```
+
+### *Lag* Optimum ARDL
+
+Kita bisa mencari kombinasi $p$ dan $q$ terbaik dengan fungsi `ardlBoundOrders()`.
+
+```{r}
+model.ardl.opt <- ardlBoundOrders(data = data.frame(datame), ic = "AIC", formula = AQI ~ o3)
+
+# Menarik kombinasi lag dengan AIC terkecil
+min_p <- c()
+for(i in 1:6){
+  min_p[i] <- min(model.ardl.opt$Stat.table[[i]])
+}
+q_opt <- which(min_p == min(min_p, na.rm = TRUE))
+p_opt <- which(model.ardl.opt$Stat.table[[q_opt]] == min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+
+data.frame("Lag_Y_opt(q)" = q_opt, "Lag_X_opt(p)" = p_opt, "AIC" = model.ardl.opt$min.Stat)
+```
+
+```{r}
+# Peramalan ARDL awal (p=13, q=2)
+
+model.ardl.opt <- ardlDlm(formula = AQI ~ o3,data = train,p = 13,q = 2)
+fore.ardl.opt <- dLagM::forecast(model = model.ardl.opt, x = test$o3, h = 15)
+mape.ardl.opt <- MAPE(fore.ardl.opt$forecasts, test$AQI)
+cat("MAPE Model ARDL (13,2):", mape.ardl.opt, "\n")
+```
+Berdasarkan hasil peramalan pada data testing, model ARDL(13,2) menghasilkan nilai MAPE sebesar 1,38%. Hal ini menunjukkan bahwa rata-rata kesalahan absolut hasil peramalan model terhadap nilai aktual AQI adalah sekitar 1,38%.
+
+# 3. Evaluasi asumsi model dan bandingkan kinerja peramalan menggunakan metrik akurasi (MAPE) serta visualisasi grafik
+
+
+## A. Pendekatan dengan Library `dynlm` dan Uji Asumsi
+
+Pemodelan juga dapat dilakukan secara manual menggunakan library `dynlm`. Keunggulannya adalah kemudahan dalam memanggil fungsi uji asumsi sisaan (karena format outputnya setara dengan regresi linier standar `lm`).
+
+Gunakan fungsi `L()` untuk memanggil nilai masa lalu (*lag*).
+
+```{r}
+# Sama dengan DLM (q=1)
+cons_lm1 <- dynlm(AQI ~ o3 + L(o3), data = train.ts)
+
+# Setara dengan Model Autoregressive Murni (Hanya melibatkan o3 dan AQI-1)
+cons_lm2 <- dynlm(AQI ~ o3 + L(AQI), data = train.ts)
+
+# Sama dengan ARDL (p=1, q=1)
+cons_lm3 <- dynlm(AQI ~ o3 + L(o3) + L(AQI), data = train.ts)
+```
+
+### Uji Asumsi Model (Contoh pada cons_lm1)
+
+### 1. Uji Autokorelasi (Durbin-Watson)
+
+H0: Tidak ada autokorelasi
+
+```{r}
+dwtest(cons_lm1)
+```
+
+### 2. Uji Heteroskedastisitas (Breusch-Pagan)
+
+H0: Ragam sisaan homogen
+
+```{r}
+bptest(cons_lm1)
+```
+
+### 3. Uji Normalitas (Shapiro-Wilk)
+
+H0: Sisaan berdistribusi normal
+
+```{r}
+shapiro.test(residuals(cons_lm1))
+```
+
+(Catatan: Tolak H0 jika P-Value \< 0.05)
+Berdasarkan uji Durbin-Watson diperoleh nilai p-value < 0,05, sehingga **terdapat autokorelasi positif pada residual**. Uji Breusch-Pagan menghasilkan p-value> 0,05, sehingga **tidak terdapat bukti adanya heteroskedastisitas dan asumsi homoskedastisitas terpenuhi**. Sementara itu, uji Shapiro-Wilk menghasilkan p-value < 0,05, sehingga **residual tidak berdistribusi normal. Dengan demikian, model belum memenuhi asumsi bebas autokorelasi dan normalitas, tetapi memenuhi asumsi homoskedastisitas**
+
+## B. Perbandingan Performa Model
+
+Mari kita bandingkan akurasi peramalan berdasarkan MAPE dan memvisualisasikannya.
+
+### Akurasi
+
+```{r}
+# Ringkasan Akurasi
+akurasi <- matrix(c(mape.koyck, mape.dlm.opt, mape.ardl.opt))
+row.names(akurasi) <- c("Koyck", "DLM Optimum", "ARDL (13,2)")
+colnames(akurasi) <- c("MAPE")
+print(akurasi)
+```
+Berdasarkan hasil perbandingan kinerja peramalan menggunakan MAPE, model DLM optimum menghasilkan nilai MAPE terendah sebesar 1,2744%, diikuti oleh model ARDL(13,2) sebesar 1,3781%. Hal ini menunjukkan bahwa kedua model memiliki tingkat kesalahan peramalan yang relatif kecil, dengan model DLM optimum memberikan kinerja peramalan yang sedikit lebih baik dibandingkan model ARDL(13,2). Sementara itu, model Koyck menghasilkan nilai MAPE sebesar 120,7043%, yang menunjukkan tingkat kesalahan peramalan jauh lebih besar dibandingkan kedua model lainnya. Dengan demikian, berdasarkan nilai MAPE, model DLM optimum merupakan model dengan kinerja peramalan terbaik.
+
+## C. Visualisasi Aktual vs Peramalan
+
+```{r}
+par(mfrow=c(1,1))
+
+plot(test$o3, test$AQI, type="b", col="black", ylim=c(15,65), lwd=2, pch=1, ylab="AQI", xlab="O3", main="Perbandingan Model Peramalan")
+
+lines(test$o3, fore.koyck$mean, col="red", type="b", pch=16)
+lines(test$o3, fore.dlm.opt$forecasts, col="blue", type="b", pch=17)
+lines(test$o3, fore.ardl.opt$forecasts, col="green", type="b", pch=18)
+
+legend("topleft", legend=c("Aktual", "Koyck", "DLM Optimum", "ARDL (13,2)"), col=c("black","red","blue","green"), lty=1, pch=c(1,16,17,18), cex=0.8)
+```

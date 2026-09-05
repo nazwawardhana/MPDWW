@@ -32,6 +32,9 @@ library("TSA")
 ```
 
 ## Impor Data
+```{r}
+#install.packages("rio")
+```
 
 ```{r}
 library(rio) #install packages jika belum ada
