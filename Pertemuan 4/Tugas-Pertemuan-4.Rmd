@@ -1,0 +1,525 @@
+---
+title: "Tugas pertemuan 4 Praktikum Metode Peramalan Deret Waktu"
+author: "Nazwa Nadya Wardhana (M0401241073)"
+date: "2026-09-13"
+output: 
+  rmdformats::readthedown
+---
+
+# Proses MA(2)
+
+Instruksi tugas:
+
+- Melalui program R: Bangkitkan model MA(2) dengan 𝜃1 = 0.4 dan 𝜃2 = 0.6 sebanyak 300 data (Manual dan dengan arima.sim)
+- Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner
+- Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡 dengan 𝑌𝑡−3
+- Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoritis
+
+## Melalui program R: Bangkitkan model MA(2) dengan 𝜃1 = 0.4 dan 𝜃2 = 0.6 sebanyak 300 data (Manual dan dengan arima.sim)
+
+### Manual
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+ts.plot(wn)
+
+```
+
+```{r}
+ma <- c(wn[1], wn[2])
+
+for(i in 3:300){
+   ma[i] <- wn[i] + 0.4 * wn[i - 1] + 0.6 * wn[i - 2]
+}
+
+ma
+```
+
+### arima.sim
+
+```{r}
+ma2 <- arima.sim(list(order=c(0,0,2), ma = c(0.4, 0.6)), n=300)
+ma2
+
+```
+
+## Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner
+
+### Plot time series
+
+```{r}
+ts.plot(ma)
+```
+
+Berdasarkan plot time series, terlihat bahwa data MA(2) yang dibangkitkan stasioner dalam rataan
+
+### Plot ACF
+
+```{r}
+acf(ma,lag.max = 20)
+```
+
+Berdasarkan plot ACF MA(2) tersebut, terlihat bahwa plot ACF cuts off di lag kedua. Setelah lag ke-2 sebagian besar nilai acf berada di dalam interval kepercayaan. artinya terlihat bahwa autokorelasi pada lag 1 dan 2 signifikan karena melewati batas interval kepercayaan.
+
+### Plot PACF
+
+```{r}
+pacf(ma)
+```
+
+Berdasarkan plot PACF MA(2), terlihat bahwa plot PACF cenderung tails off, yaitu nilaii autokorelasi parsial mengecil secara bertahap setelah beberapa lag.
+
+### plot EACF
+
+```{r}
+TSA::eacf(ma)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(0) dan ordo MA(2)
+
+## Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡 dengan 𝑌𝑡−3
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+#Yt
+yt_ma <- ma[-1]
+yt_ma
+
+#Yt-1
+yt_1_ma <- ma[-300]
+yt_1_ma
+
+plot(y=yt_ma,x=yt_1_ma)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+#Yt
+yt_ma2 <- ma[-c(1,2)]
+yt_ma2
+
+#Yt-2
+yt_2_ma <- ma[-c(299,300)]
+yt_2_ma
+
+plot(y=yt_ma2,x=yt_2_ma)
+
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−3
+
+```{r}
+# Yt
+yt_ma3 <- ma[-c(1,2,3)]
+yt_ma3
+
+# Yt-3
+yt_3_ma <- ma[-c(298,299,300)]
+yt_3_ma
+
+# Scatterplot
+plot(y=yt_ma3,x=yt_3_ma)
+```
+
+## Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoritis
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+cor(yt_ma,yt_1_ma)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t−1}$ dari hasil simulasi mendekati perhitungan teoritis yaitu
+
+$$\rho_1 =
+\frac{-\theta_1+\theta_1\theta_2}
+{1+\theta_1^2+\theta_2^2}
+=
+\frac{-(-0.4)+(-0.4)(-0.6)}
+{1+(-0.4)^2+(-0.6)^2}
+=
+\frac{0.4+0.24}{1+0.16+0.36}
+=
+\frac{0.64}{1.52}
+=
+0.4211$$
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+cor(yt_ma2,yt_2_ma)
+```
+
+$$\rho_2 =
+\frac{-\theta_2}
+{1+\theta_1^2+\theta_2^2}
+=
+\frac{-(-0.6)}
+{1+(-0.4)^2+(-0.6)^2}
+=
+\frac{0.6}{1+0.16+0.36}
+=
+\frac{0.6}{1.52}
+=
+0.3947$$
+
+### 𝑡 dengan 𝑌𝑡−3
+
+```{r}
+cor(yt_ma3,yt_3_ma)
+```
+
+Secara teoritis,
+
+$$\rho_3 = 0$$
+
+karena $k>q$, dengan $q=2$, sehingga
+
+$$\rho_k=0,\quad k>2$$
+
+# Proses AR(2)
+
+Instruksi tugas: Melalui program R: - Bangkitkan model AR(2) dengan 𝜙1 = 0.5 dan 𝜙2 = 0.2 sebanyak 300 data (Manual dan dengan arima.sim) - Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner - Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡dengan 𝑌𝑡−3 - Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoriti
+
+## Bangkitkan model AR(2) dengan 𝜙1 = 0.5 dan 𝜙2 = 0.2 sebanyak 300 data (Manual dan dengan arima.sim)
+
+### manual
+
+```{r}
+set.seed(1234)
+n<-length(wn)
+n
+```
+
+```{r}
+ar <- c(1:n) 
+for (i in 3:n) {ar[i]<-wn[i]+0.5*ar[i-1] + 0.2*ar[i-2]}
+ar
+```
+
+### arima.sim
+
+```{r}
+ar2 <- arima.sim(list(order=c(2,0,0), ar=c(0.5, 0.2)), n=300)
+ar2
+```
+
+## Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner
+
+### plot time series
+
+```{r}
+ts.plot(ar)
+```
+
+Berdasarkan plot time series tersebut terlihat bahwa data cenderung stasioner pada rataan
+
+### plot ACF
+
+```{r}
+acf(ar)
+```
+
+Plot ACF menunjukkan pola tails off, yaitu nilai autokorelasi secara bertahap menurun menuju nol seiring bertambahnya lag. Pola ini sesuai dengan karakteristik model AR(2), dimana ACF tidak terputus (cuts off ) secara langsung pada lag tertentu. dan sedikit cenderung membentuk pola grafik sinus
+
+### plot PACF
+
+```{r}
+pacf(ar)
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF cuts off pada lag kedua, sejalan dengan teori yang ada.
+
+### plot EACF
+
+```{r}
+TSA::eacf(ar)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(1) dan ordo MA(1)
+
+## Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡dengan 𝑌𝑡−3
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+#Yt
+yt_ar <- ar[-1]
+yt_ar
+
+#Yt-1
+yt_1_ar <- ar[-300]
+yt_1_ar
+
+plot(y=yt_ar,x=yt_1_ar)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+#Yt
+yt_ar2 <- ar[-c(1,2)]
+yt_ar2
+
+#Yt-2
+yt_2_ar <- ar[-c(299,300)]
+yt_2_ar
+
+plot(y=yt_ar2,x=yt_2_ar)
+```
+
+### 𝑌𝑡dengan 𝑌𝑡−3
+
+```{r}
+# Yt
+yt_ar3 <- ar[-c(1,2,3)]
+yt_ar3
+
+# Yt-3
+yt_3_ar <- ar[-c(298,299,300)]
+yt_3_ar
+
+plot(y=yt_ar3, x=yt_3_ar)
+```
+
+## Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoritiS
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+cor(yt_ar,yt_1_ar)
+```
+
+$$\begin{aligned}
+\rho_1
+&= \frac{\phi_1}{1-\phi_2}\\
+&= \frac{0.5}{1-0.2}\\
+&= \frac{0.5}{0.8}\\
+&= 0.625.
+\end{aligned}$$
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+cor(yt_ar2, yt_2_ar)
+```
+
+$$\begin{aligned}
+\rho_2
+&= \phi_1\rho_1 + \phi_2\rho_0\\
+&= (0.5)(0.625) + (0.2)(1)\\
+&= 0.3125 + 0.2\\
+&= 0.5125.
+\end{aligned}$$
+
+### 𝑌𝑡dengan 𝑌𝑡−3
+
+```{r}
+cor(yt_ar3, yt_3_ar)
+```
+
+$$\begin{aligned}
+\rho_3
+&= \phi_1\rho_2 + \phi_2\rho_1\\
+&= (0.5)(0.5125) + (0.2)(0.625)\\
+&= 0.25625 + 0.125\\
+&= 0.38125.
+\end{aligned}$$
+
+# Proses ARMA(2,2)
+
+Melalui program R: - Bangkitkan model ARMA(2,2) dengan 𝜃1 = 0.4, 𝜃2 = 0.6 ,𝜙1 = 0.5 dan 𝜙2 = 0.2 sebanyak 300 data (Manual dan arima.sim) - Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner - Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡 dengan 𝑌𝑡−3 - Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoriti
+
+## Bangkitkan model ARMA(2,2) dengan 𝜃1 = 0.4, 𝜃2 = 0.6 ,𝜙1 = 0.5 dan 𝜙2 = 0.2 sebanyak 300 data (Manual dan arima.sim)
+
+### manual
+
+```{r}
+set.seed(1234)
+n = length(wn)
+n
+
+phi1 = 0.5
+phi2 = 0.2
+
+theta1 = 0.4
+theta2 = 0.6
+
+y.arma=c(1:n)
+
+for (i in 3:n){y.arma[i] = phi1*y.arma[i-1] + phi2*y.arma[i-2] + theta1*wn[i-1] + theta2*wn[i-2] + wn[i]}
+
+y.arma
+```
+
+### arima.sim
+
+```{r}
+arma22 <- arima.sim(list(order=c(2,0,2),ar = c(0.5, 0.2), ma = c(0.4, 0.6)), n=300)
+arma22
+```
+
+## Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi apakah data tersebut stasioner
+
+### plot time series
+
+```{r}
+ts.plot(y.arma)
+```
+
+### plot ACF
+
+```{r}
+acf(y.arma)
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot ACF yang tails off
+
+### plot PACF
+
+```{r}
+pacf(y.arma)
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot PACF yang tails off, sesuai dengan teori
+
+### plot EACF
+
+```{r}
+TSA::eacf(y.arma)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(2)
+
+## Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡 dengan 𝑌𝑡−3
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+#Yt
+yt_arma <- y.arma[-1]
+yt_1_arma <- y.arma[-300]
+
+plot(y=yt_arma,x=yt_1_arma)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+yt_arma2 <- y.arma[-c(1,2)]
+yt_2_arma <- y.arma[-c(299,300)]
+
+plot(y=yt_arma2, x=yt_2_arma)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−3
+
+```{r}
+yt_arma3 <- y.arma[-c(1,2,3)]
+yt_3_arma <- y.arma[-c(298,299,300)]
+
+plot(y=yt_arma3, x=yt_3_arma)
+
+```
+
+## Hitung autokorelasi masing masing baik dari data bangkitan maupun secara teoriti
+
+### 𝑌𝑡 dengan 𝑌𝑡−1
+
+```{r}
+cor(yt_arma,yt_1_arma)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−2
+
+```{r}
+cor(yt_arma2, yt_2_arma)
+```
+
+### 𝑌𝑡 dengan 𝑌𝑡−3
+
+```{r}
+cor(yt_arma3, yt_3_arma)
+```
+
+### perhitungan teoritis
+
+
+$$\psi_1=\phi_1+\theta_1
+=0.5+0.4
+=0.9$$
+
+$$\psi_2=\phi_1\psi_1+\phi_2+\theta_2
+=(0.5)(0.9)+0.2+0.6
+=1.25$$
+
+$$\gamma_1
+=
+0.5\gamma_0+0.2\gamma_1
++0.4+0.6(0.9)$$
+
+$$\gamma_1
+=
+0.5\gamma_0+0.2\gamma_1+0.94$$
+
+$$\gamma_2
+=
+0.5\gamma_1+0.2\gamma_0+0.6$$
+
+$$\gamma_0
+=
+0.5\gamma_1+0.2\gamma_2
++1+0.4(0.9)+0.6(1.25)$$
+
+$$\gamma_0
+=
+0.5\gamma_1+0.2\gamma_2+2.11$$
+
+$$\gamma_0=5.017094,\qquad
+\gamma_1=4.310684,\qquad
+\gamma_2=3.758761$$
+
+$$\rho_1
+=
+\frac{\gamma_1}{\gamma_0}
+=
+\frac{4.310684}{5.017094}
+=
+0.859199$$
+
+$$\rho_2
+=
+\frac{\gamma_2}{\gamma_0}
+=
+\frac{3.758761}{5.017094}
+=
+0.749191$$
+
+karena $3>q=2$,
+
+$$\gamma_3
+=
+\phi_1\gamma_2+\phi_2\gamma_1$$
+
+$$\gamma_3
+=
+(0.5)(3.758761)+(0.2)(4.310684)
+=
+2.741518$$
+
+$$\rho_3
+=
+\frac{\gamma_3}{\gamma_0}
+=
+\frac{2.741518}{5.017094}
+=
+0.546435$$
+
+$$\boxed{
+\rho_1=0.859199,\quad
+\rho_2=0.749191,\quad
+\rho_3=0.546435
+}$$ \`\`\`
