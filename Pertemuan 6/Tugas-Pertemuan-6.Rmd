@@ -1,0 +1,417 @@
+---
+title: "Tugas pertemuan 6 Praktikum Metode Peramalan Deret Waktu (Membuat Model ARIMA)"
+author: "Nazwa Nadya Wardhana (M0401241073)"
+date: "2026-10-01"
+output: 
+  rmdformats::readthedown
+---
+
+# Library
+
+```{r}
+library(ggplot2)
+library(tseries)
+library(MASS)
+library(forecast)
+library(TSA)
+library(TTR)
+library(aTSA)
+library(graphics)
+library(readxl)
+```
+
+# Data
+
+Data yang digunakan adalah rata-rata suhu udara 2 meter harian (°C) Kota Bogor periode 1 Januari 2024 sampai 26 Agustus 2026.
+
+```{r}
+data <- read_excel("C:\\Users\\Mybook Hype7\\Documents\\MPDWW\\MPDWW\\Pertemuan 6\\Data rata rata temperatur 2m kota bogor 2024-2026.xlsx")
+colnames(data) <- c("tanggal", "suhu")
+data$tanggal <- as.Date(data$tanggal)
+n <- nrow(data)
+n
+
+sum(is.na(data$suhu))
+
+summary(data$suhu)
+
+head(data)
+
+str(data)
+```
+
+Suhu rata-rata harian berkisar antara 23,3 °C hingga 29,8 °C dengan rata-rata sekitar 26,2 °C. Rentang yang sempit ini wajar untuk kota tropis seperti Bogor yang suhunya relatif stabil sepanjang tahun.
+
+# Eksplorasi Data
+
+```{r}
+data.ts <- ts(data$suhu)
+plot.ts(data.ts, lty = 1, xlab = "Waktu (hari ke-)", ylab = "Suhu (°C)",
+        main = "Plot Suhu Rata-rata Harian Kota Bogor", col = "#C7372F")
+```
+
+Berdasarkan plot deret waktu, data bergerak naik turun di sekitar nilai tengah sekitar 26 °C tanpa tren naik atau turun yang jelas. Karena pola data relatif stabil dan jumlahnya cukup banyak, pembagian data latih dan data uji ditetapkan dengan proporsi 80%:20%, yaitu 775 amatan pertama sebagai data latih (1 Jan 2024 - 13 Feb 2026) dan 194 amatan terakhir sebagai data uji
+
+# Pembagian Data Latih dan Data Uji
+
+```{r}
+ntrain <- 775
+suhutrain <- data$suhu[1:ntrain]
+suhutest  <- data$suhu[(ntrain+1):n]
+train.ts <- ts(suhutrain)
+test.ts  <- ts(suhutest)
+c(latih = length(train.ts), uji = length(test.ts))
+```
+
+## Plot Data Latih
+
+```{r}
+plot.ts(train.ts, lty = 1, xlab = "Waktu", ylab = "Suhu (°C)", main = "Plot Suhu Data Latih", col = "#C7372F")
+```
+
+Secara visual data cenderung stasioner dalam rataan.
+
+## Plot Data Uji
+
+```{r}
+plot.ts(test.ts, lty = 1, xlab = "Waktu", ylab = "Suhu (°C)", main = "Plot Suhu Data Uji", col = "darkgreen")
+```
+
+# Uji Stasioneritas Data Latih
+
+## Stasioneritas dalam Rataan
+
+### Plot ACF
+
+```{r}
+acf(train.ts, lag.max = 30, main = "ACF Data Latih")
+```
+
+Berdasarkan plot ACF, terlihat bahwa plot ACF data menurun secara perlahan (*tails of slowly*).
+
+### Uji ADF
+
+```{r}
+tseries::adf.test(train.ts)
+```
+
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF, didapat p-value sebesar 0,01 (lebih kecil dari taraf nyata 5%) sehingga tolak $H_0$, artinya data stasioner dalam rataan. Meskipun ACF turun lambat, uji formal dan plot deret waktu sama-sama menunjukkan tidak ada tren, sehingga **tidak diperlukan differencing** (d = 0).
+
+## Stasioneritas dalam Ragam
+
+### Plot Box-Cox
+
+```{r}
+index <- seq(1:ntrain)
+bc <- boxcox(train.ts ~ index, lambda = seq(-3, 3, by = 0.05))
+```
+
+```{r}
+# Nilai lambda optimum (rounded)
+lambda_opt <- bc$x[which.max(bc$y)]
+lambda_opt
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, df = 1)]
+c(Batas_Bawah = min(ci_lambda), Batas_Atas = max(ci_lambda))
+
+```
+
+Nilai λ optimum sebesar -0,9 dengan selang kepercayaan 95% antara -2,30 sampai 0,55. Selang tersebut tidak memuat nilai 1, sehingga data belum stasioner dalam ragam dan perlu ditangani dengan transformasi Box-Cox
+
+## Penanganan Ketidakstasioneran Ragam (Transformasi Box-Cox)
+
+```{r}
+lambda <- round(lambda_opt, 1)
+lambda
+```
+
+```{r}
+train.bc <- BoxCox(train.ts, lambda = lambda)
+
+plot.ts(train.bc, lty = 1, xlab = "Waktu", ylab = "Suhu Transformasi",
+        main = "Plot Data Latih Setelah Transformasi Box-Cox", col = "darkgreen")
+```
+```{r}
+acf(train.bc, lag.max = 30, main = "ACF Data Latih Hasil Transformasi")
+```
+```{r}
+tseries::adf.test(train.bc)
+```
+Setelah transformasi, data tetap stasioner dalam rataan (ADF p-value = 0,01 < 0,0 dan plot ACF serupa dengan sebelumnya). Selanjutnya seluruh pemodelan dilakukan pada data hasil transformasi ini, dan hasil ramalan akan dikembalikan ke skala asli (°C) dengan transformasi balik.
+
+
+# Identifikasi Model
+
+## Plot ACF
+
+```{r}
+acf(train.bc, lag.max = 20, main = "ACF")
+```
+
+Plot ACF menurun perlahan (tails off), sehingga tidak ada indikasi model MA murni.
+
+## Plot PACF
+```{r}
+pacf(train.bc, lag.max = 20, main = "PACF")
+```
+
+Plot PACF signifikan kuat pada lag 1 dan lag 2, lalu mengecil. Pola ini mengarah pada model ARIMA(2,0,0), atau ARIMA(1,0,0) jika lag 2 dianggap kecil.
+
+
+
+## Plot EACF
+```{r}
+eacf(train.bc)
+```
+Berdasarkan plot EACF, ujung segitiga nol berada pada beberapa titik sehingga diperoleh model tentatif ARIMA(1,0,1), ARIMA(2,0,1), ARIMA(1,0,2), dan ARIMA(2,0,2). Gabungan dengan hasil PACF, model tentatif yang dicoba adalah ARIMA(1,0,0), ARIMA(2,0,0), ARIMA(1,0,1), ARIMA(2,0,1), ARIMA(1,0,2), dan ARIMA(2,0,2).
+
+# Pendugaan Parameter Model Tentatif
+
+## ARIMA(1,0,0)
+```{r}
+model1 <- Arima(train.bc, order = c(1,0,0), method = "ML")
+summary(model1)
+
+lmtest::coeftest(model1)
+```
+Seluruh parameter signifikan. AIC = -7964,67.
+
+## ARIMA(2,0,0)
+```{r}
+model2 <- Arima(train.bc, order = c(2,0,0), method = "ML")
+summary(model2)
+lmtest::coeftest(model2)
+```
+
+Seluruh parameter signifikan. AIC = -7985,93.
+
+
+## ARIMA(1,0,1)
+```{r}
+model3 <- Arima(train.bc, order = c(1,0,1), method = "ML")
+summary(model3)
+lmtest::coeftest(model3)
+
+```
+Seluruh parameter signifikan. AIC = -7992,95.
+
+
+## ARIMA(2,0,1)
+```{r}
+model4 <- Arima(train.bc, order = c(2,0,1), method = "ML")
+summary(model4)
+lmtest::coeftest(model4)
+```
+Seluruh parameter signifikan. AIC = -8010,38 (terkecil).
+
+## ARIMA(1,0,2)
+```{r}
+model5 <- Arima(train.bc, order = c(1,0,2), method = "ML")
+summary(model5)
+
+lmtest::coeftest(model5)
+```
+Seluruh parameter signifikan. AIC = -8000,76.
+
+
+## ARIMA(2,0,2)
+
+```{r}
+model6 <- Arima(train.bc, order = c(2,0,2), method = "ML")
+summary(model6)
+
+lmtest::coeftest(model6)
+```
+Parameter MA2 tidak signifikan (p-value 0,32) sehingga model ini tidak seluruhnya signifikan. AIC = -8009,33.
+
+## Ringkasan AIC
+
+```{r}
+model_tentatif <- data.frame(
+  Model = c("ARIMA(1,0,0)", "ARIMA(2,0,0)", "ARIMA(1,0,1)",
+            "ARIMA(2,0,1)", "ARIMA(1,0,2)", "ARIMA(2,0,2)"),
+  AIC = c(AIC(model1), AIC(model2), AIC(model3), AIC(model4), AIC(model5), AIC(model6)),
+  BIC = c(BIC(model1), BIC(model2), BIC(model3), BIC(model4), BIC(model5), BIC(model6))
+)
+model_tentatif
+```
+
+Nilai AIC terkecil dimiliki oleh ARIMA(2,0,1) dan seluruh parameternya signifikan, sehingga model yang dipilih adalah ARIMA(2,0,1). Model ini juga memiliki BIC terkecil. Artinya suhu hari ini dipengaruhi oleh suhu satu dan dua hari sebelumnya serta galat satu hari sebelumnya.
+
+
+# Analisis Sisaan
+
+Model ARIMA harus memenuhi asumsi normalitas, kebebasan sisaan, dan kehomogenan ragam. Diagnostik model dilakukan secara eksplorasi dan uji formal.
+
+## Eksplorasi Sisaan
+
+```{r}
+sisaan <- model4$residuals
+par(mfrow = c(2,2), mar = c(4,4,2,1))
+
+qqnorm(sisaan, main = "Normal Q-Q Plot")
+
+qqline(sisaan, col = "blue", lwd = 2)
+
+plot(c(1:length(sisaan)), sisaan, xlab = "Waktu", ylab = "Sisaan", main = "Plot Sisaan vs Waktu")
+
+acf(sisaan, main = "ACF Sisaan")
+
+pacf(sisaan, main = "PACF Sisaan")
+```
+Berdasarkan plot kuantil-kuantil normal, titik-titik sisaan umumnya mengikuti garis, tetapi ujung bawah (kiri) sedikit menyimpang (sedikit menjulur ke arah negatif). Lebar pita sisaan terhadap waktu relatif seragam. Plot ACF dan PACF sisaan tidak menunjukkan spike signifikan yang berarti pada lag-lag awal sehingga sisaan secara visual saling bebas. Hal ini diuji lebih lanjut dengan uji formal.
+
+
+## Uji Formal
+
+### Normalitas Sisaan
+```{r}
+# Sisaan dibakukan terlebih dahulu karena skala sisaan sangat kecil
+ks.test(as.numeric(scale(sisaan)), "pnorm")
+```
+Selain dengan eksplorasi, asumsi tersebut dapat diuji menggunakan uji
+formal. Pada tahapan ini uji formal yang digunakan untuk normalitas
+adalah uji Kolmogorov-Smirnov (KS). Hipotesis pada uji KS adalah sebagai
+berikut.
+
+$H_0$ : Sisaan menyebar normal
+
+$H_1$ : Sisaan tidak menyebar normal
+
+Berdasarkan uji KS tersebut, didapat *p-value* sebesar 0.5399 yang lebih
+dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa sisaan menyebar normal. Hal ini sesuai dengan hasil eksplorasi menggunakan plot kuantil-kuantil normal.
+
+
+###  Autokorelasi Sisaan (Kebebasan)
+```{r}
+Box.test(sisaan, type = "Ljung")
+```
+Selanjutnya akan dilakukan uji formal untuk kebebasan sisaan menggunakan
+uji Ljung-Box. Hipotesis yang digunakan adalah sebagai berikut.
+
+$H_0$ : Sisaan saling bebas
+
+$H_1$ : Sisaan tidak tidak saling bebas
+
+Berdasarkan uji Ljung-Box tersebut, didapat *p-value* sebesar 0.7393 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa sisaan saling bebas. Sesuai dengan eksplorasi.
+
+### Kehomogenan Ragam Sisaan
+
+```{r}
+Box.test(sisaan^2, type = "Ljung")
+```
+
+Hipotesis yang digunakan untuk uji kehomogenan ragam adalah sebagai
+berikut.
+
+$H_0$ : Ragam sisaan homogen
+
+$H_1$ : Ragam sisaan tidak homogen
+
+Berdasarkan uji Ljung-Box terhadap sisaan kuadrat tersebut, didapat
+*p-value* sebesar 0.05162 yang lebih dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa ragam sisaan homogen.
+
+
+###  Nilai Tengah Sisaan
+
+```{r}
+t.test(sisaan, mu = 0, conf.level = 0.95)
+```
+Terakhir, dengan uji-t, akan dicek apakah nilai tengah sisaan sama
+dengan nol. Hipotesis yang diujikan sebagai berikut.
+
+$H_0$ : nilai tengah sisaan sama dengan 0
+
+$H_1$ : nilai tengah sisaan tidak sama dengan 0
+
+Berdasarkan uji-ttersebut, didapat *p-value* sebesar 0.9636 yang lebih
+besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan
+bahwa nilai tengah sisaan sama dengan nol. 
+
+
+**Secara keseluruhan, asumsi sisaan model ARIMA(2,0,1) terpenuhi (kebebasan, kehomogenan ragam, nilai tengah nol, dan normalitas).**
+
+# Overfitting
+
+*Overfitting* dilakukan dengan menaikkan orde AR (p) dan MA (q) dari model ARIMA(2,0,1) untuk melihat apakah ada model yang lebih baik. Kandidatnya adalah ARIMA(3,0,1) dan ARIMA(2,0,2).
+
+```{r}
+model_over1 <- Arima(train.bc, order = c(3,0,1), method = "ML")
+summary(model_over1)
+
+lmtest::coeftest(model_over1) 
+```
+ar3 tidak signifikan
+
+```{r}
+model_over2 <- Arima(train.bc, order = c(2,0,2), method = "ML")
+summary(model_over2)
+
+lmtest::coeftest(model_over2)
+```
+
+ma2 tidak signifikan
+
+```{r}
+overfitting <- data.frame(
+  Model = c("ARIMA(2,0,1)", "ARIMA(3,0,1)", "ARIMA(2,0,2)"),
+  AIC = c(AIC(model4), AIC(model_over1), AIC(model_over2)),
+  BIC = c(BIC(model4), BIC(model_over1), BIC(model_over2))
+)
+overfitting
+```
+
+
+Model ARIMA(3,0,1) memiliki AR3 yang tidak signifikan (p-value 0,303) dan ARIMA(2,0,2) memiliki MA2 yang tidak signifikan (p-value 0,3236). Keduanya juga memiliki AIC dan BIC yang lebih besar dibandingkan ARIMA(2,0,1). Oleh karena itu, **tidak ada model hasil overfitting yang lebih baik dan model ARIMA(2,0,1) tetap digunakan untuk peramalan**.
+
+
+# Peramalan
+
+Peramalan dilakukan menggunakan fungsi forecast() sebanyak jumlah data uji (194 hari). Hasil ramalan dalam skala transformasi dikembalikan ke skala asli (°C) dengan InvBoxCox()
+
+```{r}
+ramalan <- forecast::forecast(model4, h = length(test.ts))
+plot(ramalan, main = "Ramalan ARIMA(2,0,1) (skala transformasi)")
+```
+
+```{r}
+# Transformasi balik ke skala asli
+data.ramalan <- as.numeric(InvBoxCox(ramalan$mean, lambda = lambda))
+batas.bawah  <- as.numeric(InvBoxCox(ramalan$lower[,2], lambda = lambda))
+batas.atas   <- as.numeric(InvBoxCox(ramalan$upper[,2], lambda = lambda))
+
+perbandingan <- data.frame(
+  Tanggal = data$tanggal[(ntrain+1):n],
+  Aktual = suhutest,
+  Forecast = round(data.ramalan, 3)
+)
+head(perbandingan, 10)
+tail(perbandingan, 5)
+```
+
+```{r}
+# Akurasi pada data uji (skala asli)
+accuracy(data.ramalan, suhutest)
+```
+
+```{r}
+plot(data$tanggal, data$suhu, type = "l", col = "black", xlab = "Tanggal", ylab = "Suhu (°C)",
+     main = "Aktual vs Ramalan ARIMA(2,0,1)", ylim = range(c(data$suhu, batas.bawah, batas.atas)))
+tgl.uji <- data$tanggal[(ntrain+1):n]
+polygon(c(tgl.uji, rev(tgl.uji)), c(batas.bawah, rev(batas.atas)),
+        col = rgb(0, 0, 1, 0.15), border = NA)
+lines(tgl.uji, data.ramalan, col = "blue", lty = 2, lwd = 2)
+abline(v = data$tanggal[ntrain], col = "red", lty = 3)
+legend("topleft", legend = c("Data Aktual", "Forecast (95% PI)", "Batas latih/uji"),
+       col = c("black", "blue", "red"), lty = c(1, 2, 3), lwd = c(1, 2, 1), bty = "n")
+```
+
+Hasil ramalan ARIMA(2,0,1) bergerak cepat menuju nilai tengah (sekitar 26 °C) dan hampir mendatar. Hal ini wajar karena model ARMA stasioner untuk horizon panjang akan konvergen ke rata-ratanya. Pada data uji, ramalan memiliki RMSE sekitar 1,18 °C, MAE sekitar 0,99 °C, dan MAPE sekitar 3,67%. Nilai ME positif (sekitar 0,83) menunjukkan ramalan cenderung lebih rendah (under-forecast) dibandingkan suhu aktual, karena suhu pada periode uji (Feb-Agu 2026) rata-rata lebih hangat daripada periode latih. Meskipun demikian, kesalahan relatif di bawah 4% sehingga model dinilai cukup baik untuk gambaran suhu rata-rata, tetapi kurang tepat untuk peramalan jangka panjang harian karena tidak menangkap pola musiman.
+
+
+
